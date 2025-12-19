@@ -22,14 +22,14 @@ jobs:
       with:
         python-version: "3.9"
 
-    # 3. Install your dependencies
+    # 3. Install your dependencies (including pytest)
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    # 4. Verify it works (Sanity Check)
-    - name: Sanity Check
-      run: echo "The environment is set up and dependencies are installed!"
-
-      
+    # 4. Run the Tests! (This replaces the old Sanity Check)
+    - name: Run Data Integrity Tests
+      run: |
+        pytest tests/
+        
