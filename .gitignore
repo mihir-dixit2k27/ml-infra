@@ -1,0 +1,25 @@
+# Python System Files
+__pycache__/
+*.pyc
+
+# Virtual Environments
+venv/
+.venv/
+env/
+simulation_env/
+
+# Environment Variables
+.env
+
+# Logs and Databases
+logs/
+*.log
+*.sqlite
+
+# MLflow and Artifacts
+mlruns/
+mlartifacts/
+artifacts/
+
+# Data (Optional: usually we don't commit large raw data)
+data/raw/

@@ -1,0 +1,50 @@
+# === Core ML & Data ===
+# For data manipulation and scientific computing
+pandas
+numpy
+
+# For modeling pipelines, metrics, and preprocessing
+scikit-learn
+
+# For plotting the confusion matrix
+matplotlib
+joblib
+
+# Statistical tests
+scipy
+
+
+# === MLOps & Experiment Tracking ===
+# The core MLOps platform for logging and registry
+mlflow
+
+# For database connection (Postgres)
+psycopg2-binary
+sqlalchemy
+
+
+# The web framework for building the API
+fastapi
+
+# The server that runs the API
+uvicorn[standard]
+
+# For sending requests (used by producer.py)
+requests
+
+
+
+# For data and model drift detection
+evidently
+
+# For automated testing
+pytest
+
+
+# === Utilities & Dev Environment ===
+# For running notebooks (EDA)
+notebook
+
+# For loading .env files
+python-dotenv
+

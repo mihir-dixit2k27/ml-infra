@@ -1,0 +1,195 @@
+# docker-compose.yml (Place this in your project root 'mlops/' folder)
+
+version: '3.8'
+
+services:
+  # 1. PostgreSQL Database Service
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-mlflow_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlflow_password}
+      - POSTGRES_DB=${POSTGRES_DB:-mlflow_db}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+    ports:
+      - "5433:5432" # Expose DB port to host (optional, for local inspection)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist data using a named volume
+    healthcheck:
+      # Checks if the Postgres server is ready to accept connections
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlflow_user} -d ${POSTGRES_DB:-mlflow_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mlops-net
+     # 4. Airflow Database Initialization (Runs once then exits)
+  airflow-init:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    command: version
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow_db
+      - _AIRFLOW_DB_UPGRADE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mlops-net
+
+  # 5. Airflow Webserver (The UI)
+  airflow-webserver:
+    user: root # kyuki error resolve nhi ho rhat tha 
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    command: webserver
+    ports:
+      - "8080:8080"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow_db
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - MLFLOW_TRACKING_URI=http://mlflow-ui:5000
+      - PYTHONPATH=/home/airflow/.local/lib/python3.10/site-packages:${PYTHONPATH}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/src  # Mount your src code so Airflow can see it!
+      - ./data:/opt/airflow/data # Mount data so Airflow can check drift
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - mlops-net
+
+  # 6. Airflow Scheduler (The Brain)
+  airflow-scheduler:
+
+    user: root # kyuki error resolve nhi ho rha tha . remove kar dena baad me 
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    command: scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow_db
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - MLFLOW_TRACKING_URI=http://mlflow-ui:5000
+      - PYTHONPATH=/home/airflow/.local/lib/python3.10/site-packages:${PYTHONPATH}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/src
+      - ./data:/opt/airflow/data
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - mlops-net
+
+  # 2. MLflow UI Service (acts as tracking server & registry)
+  mlflow-ui:
+    # Build MLflow server from a Python image + install packages
+    # Using 'build' instead of 'image' allows installing psycopg2
+    build:
+      context: .
+      dockerfile: mlflow.Dockerfile
+    container_name: mlflow_server
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://${POSTGRES_USER:-mlflow_user}:${POSTGRES_PASSWORD:-mlflow_password}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-mlflow_db}
+      --default-artifact-root file:///mlruns-artifacts
+      --allowed-hosts mlflow-ui,mlflow-ui:5000,localhost,127.0.0.1,0.0.0.0,*
+    ports:
+      - "5001:5000"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-mlflow_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlflow_password}
+      - POSTGRES_DB=${POSTGRES_DB:-mlflow_db}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - MLFLOW_SERVER_DEFAULT_ARTIFACT_ROOT=file:///mlruns-artifacts
+    volumes:
+      # Mount your local mlruns folder into the container for artifact viewing/storage
+      - ./mlruns:/mlruns-artifacts
+      # Mount mlartifacts directory for model artifacts (MLflow artifact storage)
+      - ./mlartifacts:/mlartifacts
+    networks:
+      - mlops-net
+    depends_on:
+      postgres:
+        condition: service_healthy # Wait for Postgres to be fully ready
+
+  # 3. FastAPI Application
+  api:
+    build:
+      context: . # Build context is the root 'mlops/' folder
+      dockerfile: api/Dockerfile # Point to the Dockerfile inside 'api/'
+    container_name: fast_api
+    ports:
+      - "8000:8000" # Map host port 8000 to container port 8000
+    environment:
+      # ** CRITICAL: Point API to the MLflow service within the Docker network **
+      - MLFLOW_TRACKING_URI=http://mlflow-ui:5000
+      - MODEL_NAME=${MODEL_NAME:-telco-churn-champion}
+      - MODEL_ALIAS=${MODEL_ALIAS:-production}
+      # PostgreSQL connection settings
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-mlflow_db}
+      - POSTGRES_USER=${POSTGRES_USER:-mlflow_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlflow_password}
+    networks:
+      - mlops-net
+    depends_on:
+      postgres:
+        condition: service_healthy # Wait for DB
+      mlflow-ui:
+        condition: service_started
+       
+                                   # NOTE: Model load might still fail briefly if MLflow server inside takes time to initialize
+    volumes:
+      - ./mlruns:/mlruns-artifacts
+
+  # 4. Streamlit MLOps Dashboard
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: mlops_dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-mlflow_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlflow_password}
+      - POSTGRES_DB=${POSTGRES_DB:-mlflow_db}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - MLFLOW_TRACKING_URI=http://mlflow_server:5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow-ui:
+        condition: service_started
+    networks:
+      - mlops-net
+volumes:
+  postgres_data:
+
+# Define the network for services to communicate easily using service names
+networks:
+  mlops-net:
+    driver: bridge
+  
+  

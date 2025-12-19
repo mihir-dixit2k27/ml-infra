@@ -1,0 +1,35 @@
+name: CI Pipeline
+
+# Trigger: Run this whenever we push to the main branch
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest  # The robot uses a fresh Linux machine
+
+    steps:
+    # 1. Download your code
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # 2. Install Python 3.9
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.9"
+
+    # 3. Install your dependencies
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # 4. Verify it works (Sanity Check)
+    - name: Sanity Check
+      run: echo "The environment is set up and dependencies are installed!"
+
+      
