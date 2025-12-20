@@ -7,11 +7,14 @@ import plotly.graph_objects as go
 from sqlalchemy import create_engine
 import numpy as np
 from mlflow_utils import get_model_performance, get_latest_model_version
+
 DB_URI = "postgresql://mlflow_user:mlflow_password@postgres_db:5432/mlflow_db"
 
 
 # Define your model name exactly as it appears in MLflow
 MODEL_NAME = "telco-churn-champion"
+
+
 def get_drift_live_data():
     """Fetches specifically numeric fields for drift analysis."""
     try:
@@ -29,73 +32,86 @@ def get_drift_live_data():
     except Exception as e:
         st.error(f"Error fetching live data for drift: {e}")
         return pd.DataFrame()
-   
-    
+
 
 def get_drift_reference_data():
     """Generates 'Normal' baseline data (Simulated Training Data)."""
     np.random.seed(42)
-    return pd.DataFrame({
-        "tenure": np.random.randint(1, 72, 500),
-        "MonthlyCharges": np.random.uniform(20, 100, 500),
-        "TotalCharges": np.random.uniform(20, 5000, 500)
-    })
+    return pd.DataFrame(
+        {
+            "tenure": np.random.randint(1, 72, 500),
+            "MonthlyCharges": np.random.uniform(20, 100, 500),
+            "TotalCharges": np.random.uniform(20, 5000, 500),
+        }
+    )
+
 
 # --- THE MAIN DRIFT TAB FUNCTION ---
 def render_drift_monitoring_tabv2():
     st.header("📉 Data Drift Analysis (Training vs. Live)")
-    
+
     live_df = get_drift_live_data()
     ref_df = get_drift_reference_data()
 
     if not live_df.empty:
         # Allow user to choose which feature to inspect
-        feature = st.selectbox("Select Feature to Analyze", ["MonthlyCharges", "tenure", "TotalCharges"])
-        
+        feature = st.selectbox(
+            "Select Feature to Analyze", ["MonthlyCharges", "tenure", "TotalCharges"]
+        )
+
         # Create the Comparison Histogram
         fig = go.Figure()
-        
+
         # 1. Plot Baseline (Blue)
-        fig.add_trace(go.Histogram(
-            x=ref_df[feature],
-            name='Training Data (Baseline)',
-            opacity=0.75,
-            marker_color='#3366CC', # Blue
-            histnorm='probability density'
-        ))
-        
+        fig.add_trace(
+            go.Histogram(
+                x=ref_df[feature],
+                name="Training Data (Baseline)",
+                opacity=0.75,
+                marker_color="#3366CC",  # Blue
+                histnorm="probability density",
+            )
+        )
+
         # 2. Plot Live Data (Red)
-        fig.add_trace(go.Histogram(
-            x=live_df[feature],
-            name='Live Traffic (Recent)',
-            opacity=0.75,
-            marker_color='#DC3912', # Red
-            histnorm='probability density'
-        ))
+        fig.add_trace(
+            go.Histogram(
+                x=live_df[feature],
+                name="Live Traffic (Recent)",
+                opacity=0.75,
+                marker_color="#DC3912",  # Red
+                histnorm="probability density",
+            )
+        )
 
         # Formatting
         fig.update_layout(
-            barmode='overlay',
+            barmode="overlay",
             title=f"Distribution Shift: {feature}",
             xaxis_title=f"{feature} Value",
             yaxis_title="Density",
-            legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99)
+            legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99),
         )
-        
+
         st.plotly_chart(fig, use_container_width=True)
-        
+
         # Auto-Insight
         live_mean = live_df[feature].mean()
         ref_mean = ref_df[feature].mean()
         delta = ((live_mean - ref_mean) / ref_mean) * 100
-        
+
         if abs(delta) > 20:
-             st.error(f"⚠️ DRIFT DETECTED! Live {feature} average ({live_mean:.2f}) has shifted by {delta:+.1f}% from training.")
+            st.error(
+                f"⚠️ DRIFT DETECTED! Live {feature} average ({live_mean:.2f}) has shifted by {delta:+.1f}% from training."
+            )
         else:
-             st.success(f"✅ Status: Stable. Shift is only {delta:+.1f}%.")
-             
+            st.success(f"✅ Status: Stable. Shift is only {delta:+.1f}%.")
+
     else:
-        st.warning("No live data found yet. Run 'python3 src/send_traffic.py --mode drift'")
+        st.warning(
+            "No live data found yet. Run 'python3 src/send_traffic.py --mode drift'"
+        )
+
 
 def render_live_traffic_tab():
     st.header("Live Traffic & Predictions")
@@ -104,10 +120,8 @@ def render_live_traffic_tab():
     if st.button("Refresh Data"):
         st.experimental_rerun()
 
-    df = load_data(
-        "SELECT * FROM prediction_logs ORDER BY timestamp DESC LIMIT 1000"
-    )
-    
+    df = load_data("SELECT * FROM prediction_logs ORDER BY timestamp DESC LIMIT 1000")
+
     # KPIs
     if df.empty:
         total_predictions = 0
@@ -123,7 +137,7 @@ def render_live_traffic_tab():
     #     if "model_version" in df and not df["model_version"].empty
     #     else "N/A"
     # )
-    
+
     # NEW CODE: Fetch the REAL latest version from MLflow directly
     try:
         real_latest_version = get_latest_model_version(MODEL_NAME)
@@ -131,7 +145,11 @@ def render_live_traffic_tab():
             model_version = real_latest_version
         else:
             # Fallback to logs if MLflow is unreachable
-            model_version = df["model_version"].iloc[0] if "model_version" in df and not df.empty else "N/A"
+            model_version = (
+                df["model_version"].iloc[0]
+                if "model_version" in df and not df.empty
+                else "N/A"
+            )
     except Exception:
         model_version = "Error"
     # --- BUG FIX END ---
@@ -283,4 +301,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

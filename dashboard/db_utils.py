@@ -29,5 +29,3 @@ def load_data(query: str) -> pd.DataFrame:
     except Exception as e:
         st.error(f"Database Error: {e}")
         return pd.DataFrame()
-
-

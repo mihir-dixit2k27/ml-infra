@@ -15,7 +15,11 @@ from datetime import datetime
 import logging
 
 # Statistical tests (scipy)
-from scipy.stats import ks_2samp, chisquare  # noqa: F401 (chisquare reserved for future categorical tests)
+from scipy.stats import (
+    ks_2samp,
+    chisquare,
+)  # noqa: F401 (chisquare reserved for future categorical tests)
+
 
 # --- Resilient DB Connection ---
 def get_db_connection(retries=5, delay=3):
@@ -25,7 +29,6 @@ def get_db_connection(retries=5, delay=3):
     db_pass = os.getenv("POSTGRES_PASSWORD", "mlflow_password")
     db_host = os.getenv("POSTGRES_HOST", "localhost")
     db_port = os.getenv("POSTGRES_PORT", "5433")
-    
 
     for i in range(retries):
         try:
@@ -34,7 +37,7 @@ def get_db_connection(retries=5, delay=3):
                 user=db_user,
                 password=db_pass,
                 host=db_host,
-                port=db_port
+                port=db_port,
             )
             print("--- Database connection successful (via host port) ---")
             return conn
@@ -47,13 +50,18 @@ def get_db_connection(retries=5, delay=3):
                 print("--- Max DB connection retries reached. Giving up. ---")
                 raise
 
+
 def get_sqlalchemy_engine():
     """Creates a SQLAlchemy engine for connecting to PostgreSQL."""
     db_name = os.getenv("POSTGRES_DB", "mlflow_db")
     db_user = os.getenv("POSTGRES_USER", "mlflow_user")
     db_pass = os.getenv("POSTGRES_PASSWORD", "mlflow_password")
-    db_host = os.getenv("POSTGRES_HOST", "localhost") # Default to localhost only if env var is missing
-    db_port = os.getenv("POSTGRES_PORT", "5433")     # Default to 5433 only if env var is missing
+    db_host = os.getenv(
+        "POSTGRES_HOST", "localhost"
+    )  # Default to localhost only if env var is missing
+    db_port = os.getenv(
+        "POSTGRES_PORT", "5433"
+    )  # Default to 5433 only if env var is missing
     db_uri = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
 
     try:
@@ -66,6 +74,7 @@ def get_sqlalchemy_engine():
     except Exception as e:
         print(f"Failed to create SQLAlchemy engine: {e}")
         raise
+
 
 # --- Data Fetching Functions ---
 def fetch_recent_predictions_sqlalchemy(engine, limit=1000):
@@ -87,6 +96,7 @@ def fetch_recent_predictions_sqlalchemy(engine, limit=1000):
     except Exception as e:
         print(f"Error fetching predictions: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
+
 
 def fetch_recent_predictions_psycopg2(conn, limit=1000):
     """Fetches the latest prediction logs into a pandas DataFrame using psycopg2."""
@@ -118,6 +128,7 @@ def fetch_recent_predictions_psycopg2(conn, limit=1000):
         if cursor:
             cursor.close()
 
+
 # --- Baseline Stats Loading ---
 # Define path relative to this script's location
 SCRIPT_DIR = Path(__file__).parent
@@ -125,28 +136,40 @@ STATS_FILE_PATH = SCRIPT_DIR.parent / "data" / "processed" / "train_stats_v1.0.j
 PROJECT_ROOT = SCRIPT_DIR.parent
 
 # --- Drift thresholds ---
-Z_SCORE_THRESHOLD = float(os.getenv("DRIFT_Z_SCORE_THRESHOLD", "3.0"))  # Configurable via env var
+Z_SCORE_THRESHOLD = float(
+    os.getenv("DRIFT_Z_SCORE_THRESHOLD", "3.0")
+)  # Configurable via env var
 KS_P_VALUE_THRESHOLD = 0.05
 # PSI_THRESHOLD = 0.1  # reserved for future use
 # CHI2_P_VALUE_THRESHOLD = 0.05  # reserved for future use
 
 # Configure basic logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
+
 
 def load_baseline_stats(path=STATS_FILE_PATH):
     """Loads the baseline training data statistics from the JSON file."""
     try:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             baseline_stats = json.load(f)
         print(f"--- Baseline stats loaded successfully from {path} ---")
-        
+
         # Enhanced validation - check for numeric stats
-        has_numeric_stats = any(key in baseline_stats for key in ["numeric_stats", "SeniorCitizen", "tenure"])
+        has_numeric_stats = any(
+            key in baseline_stats
+            for key in ["numeric_stats", "SeniorCitizen", "tenure"]
+        )
         if not has_numeric_stats:
-            print("Warning: Baseline stats file might be missing expected numeric statistics keys.")
+            print(
+                "Warning: Baseline stats file might be missing expected numeric statistics keys."
+            )
             print(f"Available keys: {list(baseline_stats.keys())[:10]}")
         else:
-            print(f"--- Found {len([k for k in baseline_stats.keys() if k not in ['timestamp', 'training_rows', 'data_hash']])} feature statistics ---")
+            print(
+                f"--- Found {len([k for k in baseline_stats.keys() if k not in ['timestamp', 'training_rows', 'data_hash']])} feature statistics ---"
+            )
         # Build helper maps for means/stds using lowercase keys to align with DB column names
         feature_means = {}
         feature_stds = {}
@@ -168,6 +191,7 @@ def load_baseline_stats(path=STATS_FILE_PATH):
         print(f"Unexpected error loading baseline stats: {e}")
         sys.exit(1)
 
+
 # --- Drift Detection ---
 def check_drift(recent_df, baseline_stats, numeric_features, categorical_features):
     """Compares recent data distribution against baseline stats for drift."""
@@ -185,12 +209,22 @@ def check_drift(recent_df, baseline_stats, numeric_features, categorical_feature
                 baseline_mean = baseline_means.get(feature, None)
                 baseline_std = baseline_stds.get(feature, 1)  # avoid division by zero
                 if baseline_mean is not None:
-                    z_score = abs(recent_mean - baseline_mean) / baseline_std if baseline_std and baseline_std > 0 else 0
-                    print(f"Feature '{feature}': Recent Mean={recent_mean:.4f}, Baseline Mean={baseline_mean:.4f}, Z-score={z_score:.2f}")
+                    z_score = (
+                        abs(recent_mean - baseline_mean) / baseline_std
+                        if baseline_std and baseline_std > 0
+                        else 0
+                    )
+                    print(
+                        f"Feature '{feature}': Recent Mean={recent_mean:.4f}, Baseline Mean={baseline_mean:.4f}, Z-score={z_score:.2f}"
+                    )
                     if z_score > Z_SCORE_THRESHOLD:
-                        print(f"  -> DRIFT DETECTED (Z-score {z_score:.2f} > {Z_SCORE_THRESHOLD})")
+                        print(
+                            f"  -> DRIFT DETECTED (Z-score {z_score:.2f} > {Z_SCORE_THRESHOLD})"
+                        )
                         drift_report["drift_detected"] = True
-                        drift_report["drifted_features"].append(f"{feature} (mean shift, z={z_score:.2f})")
+                        drift_report["drifted_features"].append(
+                            f"{feature} (mean shift, z={z_score:.2f})"
+                        )
                 # Placeholder for KS-test (requires careful baseline distribution handling)
                 # ks_stat, p_value = ks_2samp(recent_df[feature].dropna(), simulated_baseline)
                 # if p_value < KS_P_VALUE_THRESHOLD:
@@ -199,7 +233,9 @@ def check_drift(recent_df, baseline_stats, numeric_features, categorical_feature
             except Exception as e:
                 print(f"Error checking drift for numeric feature '{feature}': {e}")
         else:
-            print(f"Skipping numeric feature '{feature}': Not found in recent data or baseline stats.")
+            print(
+                f"Skipping numeric feature '{feature}': Not found in recent data or baseline stats."
+            )
 
     # Categorical drift placeholder
     print("\n--- Checking Categorical Drift (Placeholder) ---")
@@ -214,6 +250,7 @@ def check_drift(recent_df, baseline_stats, numeric_features, categorical_feature
 
     drift_report["drifted_features"] = list(set(drift_report["drifted_features"]))
     return drift_report
+
 
 # --- Drift Reporting to DB ---
 def ensure_drift_reports_table(conn):
@@ -240,6 +277,7 @@ def ensure_drift_reports_table(conn):
         if cursor:
             cursor.close()
 
+
 def log_drift_report_to_db(drift_result, checked_rows, conn):
     """Logs the drift check results to the drift_reports table."""
     cursor = None
@@ -253,7 +291,11 @@ def log_drift_report_to_db(drift_result, checked_rows, conn):
         # Use JSON format for better querying (fallback to comma-separated for compatibility)
         drifted_features = drift_result.get("drifted_features", [])
         if drifted_features:
-            drifted_features_str = json.dumps(drifted_features) if len(drifted_features) > 1 else drifted_features[0]
+            drifted_features_str = (
+                json.dumps(drifted_features)
+                if len(drifted_features) > 1
+                else drifted_features[0]
+            )
         else:
             drifted_features_str = ""
         log_data = (
@@ -271,6 +313,8 @@ def log_drift_report_to_db(drift_result, checked_rows, conn):
     finally:
         if cursor:
             cursor.close()
+
+
 # --- Main Execution Block ---
 if __name__ == "__main__":
     print("=" * 60)
@@ -278,12 +322,23 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Define feature lists (DB columns are lowercase)
-    numeric_features = ['seniorcitizen', 'tenure', 'monthlycharges', 'totalcharges']
+    numeric_features = ["seniorcitizen", "tenure", "monthlycharges", "totalcharges"]
     categorical_features = [
-        'gender', 'partner', 'dependents', 'phoneservice', 'multiplelines',
-        'internetservice', 'onlinesecurity', 'onlinebackup', 'deviceprotection',
-        'techsupport', 'streamingtv', 'streamingmovies', 'contract',
-        'paperlessbilling', 'paymentmethod'
+        "gender",
+        "partner",
+        "dependents",
+        "phoneservice",
+        "multiplelines",
+        "internetservice",
+        "onlinesecurity",
+        "onlinebackup",
+        "deviceprotection",
+        "techsupport",
+        "streamingtv",
+        "streamingmovies",
+        "contract",
+        "paperlessbilling",
+        "paymentmethod",
     ]
 
     # Load baseline stats
@@ -297,12 +352,17 @@ if __name__ == "__main__":
         recent_predictions_df = fetch_recent_predictions_sqlalchemy(engine, limit=500)
     except Exception as e:
         print(f"\n❌ SQLAlchemy execution failed: {e}")
-    
+
     if not recent_predictions_df.empty:
         print(f"\nShape of fetched data: {recent_predictions_df.shape}")
 
         # Perform drift check
-        drift_result = check_drift(recent_predictions_df, baseline_stats, numeric_features, categorical_features)
+        drift_result = check_drift(
+            recent_predictions_df,
+            baseline_stats,
+            numeric_features,
+            categorical_features,
+        )
         print(f"\nDrift Check Result: {drift_result}")
 
         # Log report to DB (use raw connection from engine if available)
@@ -313,7 +373,9 @@ if __name__ == "__main__":
             else:
                 db_conn_for_log = get_db_connection()
             if db_conn_for_log:
-                log_drift_report_to_db(drift_result, len(recent_predictions_df), db_conn_for_log)
+                log_drift_report_to_db(
+                    drift_result, len(recent_predictions_df), db_conn_for_log
+                )
         finally:
             if db_conn_for_log:
                 try:
@@ -331,10 +393,10 @@ if __name__ == "__main__":
             # Write flag file with timestamp and drifted features info
             flag_content = {
                 "timestamp": datetime.now().isoformat(),
-                "drifted_features": drift_result.get('drifted_features', []),
-                "checked_rows": len(recent_predictions_df)
+                "drifted_features": drift_result.get("drifted_features", []),
+                "checked_rows": len(recent_predictions_df),
             }
-            with open(drift_flag_file, 'w') as f:
+            with open(drift_flag_file, "w") as f:
                 f.write(json.dumps(flag_content, indent=2))
             print(f"--- Created drift flag file: {drift_flag_file} ---")
         else:
@@ -343,7 +405,9 @@ if __name__ == "__main__":
                 os.remove(drift_flag_file)
                 print("--- Removed existing drift flag file. ---")
     else:
-        print("\nNo recent predictions found or error fetching data. Skipping drift check.")
+        print(
+            "\nNo recent predictions found or error fetching data. Skipping drift check."
+        )
 
     # Cleanup engine
     if engine:
@@ -351,4 +415,3 @@ if __name__ == "__main__":
         print("--- SQLAlchemy engine disposed ---")
 
     print("\n--- Drift Monitor Script Finished ---")
-

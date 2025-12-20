@@ -4,6 +4,7 @@ import mlflow
 import streamlit as st
 from mlflow.tracking import MlflowClient
 
+
 def get_latest_model_version(model_name):
     """
     Finds the highest version number of a registered model in MLflow.
@@ -12,21 +13,22 @@ def get_latest_model_version(model_name):
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-ui:5000")
     mlflow.set_tracking_uri(tracking_uri)
     client = MlflowClient()
-    
+
     try:
         # Get all versions for this model name
         versions = client.search_model_versions(f"name='{model_name}'")
-        
+
         # Sort them by version number (descending) so the highest is first
         versions.sort(key=lambda x: int(x.version), reverse=True)
-        
+
         if versions:
             return versions[0].version  # Return the highest version string
-            
+
     except Exception as e:
         print(f"Error finding model version: {e}")
-        
+
     return None
+
 
 def load_latest_model(model_name):
     """
@@ -35,11 +37,11 @@ def load_latest_model(model_name):
     """
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-ui:5000")
     mlflow.set_tracking_uri(tracking_uri)
-    
+
     try:
         # 1. Find the latest version number programmatically
         latest_version = get_latest_model_version(model_name)
-        
+
         if latest_version:
             model_uri = f"models:/{model_name}/{latest_version}"
             print(f"🔹 Attempting to load model version: {latest_version}")
@@ -56,7 +58,10 @@ def load_latest_model(model_name):
         st.error(f"Error loading model: {e}")
         return None, "Error"
 
-def get_model_performance(experiment_name: str = "churn-prediction-experiment") -> pd.DataFrame:
+
+def get_model_performance(
+    experiment_name: str = "churn-prediction-experiment",
+) -> pd.DataFrame:
     """
     Fetch metrics for all finished runs in the given MLflow experiment.
     """
@@ -88,7 +93,8 @@ def get_model_performance(experiment_name: str = "churn-prediction-experiment") 
                 "accuracy": metrics.get("accuracy"),
                 "f1_score": metrics.get("f1_score"),
                 "auc": metrics.get("auc"),
-                "model_version": r.data.tags.get("model_version") or r.data.tags.get("mlflow.runName"),
+                "model_version": r.data.tags.get("model_version")
+                or r.data.tags.get("mlflow.runName"),
             }
         )
 

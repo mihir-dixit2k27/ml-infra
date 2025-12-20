@@ -10,11 +10,13 @@ USER root
 USER airflow
 
 # Copy requirements file
+COPY requirements.txt .
 COPY requirements.txt /requirements.txt
 
 # Install dependencies
 # We use --no-cache-dir to keep image small
-RUN pip install --no-cache-dir -r /requirements.txt
+RUN pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
+
 
 # Set PYTHONPATH to include both airflow directory and user site-packages
 # This ensures both /opt/airflow/src imports and user-installed packages (like joblib) work

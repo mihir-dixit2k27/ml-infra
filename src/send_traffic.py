@@ -6,7 +6,8 @@ import sys
 
 # CONFIGURATION
 API_URL = "http://localhost:8000/predict"
-DELAY_SECONDS = 0.5 
+DELAY_SECONDS = 0.5
+
 
 def get_normal_data():
     """
@@ -31,8 +32,9 @@ def get_normal_data():
         "PaperlessBilling": random.choice(["Yes", "No"]),
         "PaymentMethod": "Electronic check",
         "MonthlyCharges": random.uniform(20.0, 100.0),
-        "TotalCharges": random.uniform(20.0, 5000.0)
+        "TotalCharges": random.uniform(20.0, 5000.0),
     }
+
 
 def get_drifted_data():
     """
@@ -42,11 +44,13 @@ def get_drifted_data():
     - All customers are Senior Citizens (skewed demographic)
     """
     return {
-        "gender": "Female", # Skewed to only one gender
-        "SeniorCitizen": 1, # DRIFT: Everyone is a senior citizen now
+        "gender": "Female",  # Skewed to only one gender
+        "SeniorCitizen": 1,  # DRIFT: Everyone is a senior citizen now
         "Partner": "No",
         "Dependents": "No",
-        "tenure": random.randint(80, 100), # DRIFT: Impossible tenure (normal max is usually 72)
+        "tenure": random.randint(
+            80, 100
+        ),  # DRIFT: Impossible tenure (normal max is usually 72)
         "PhoneService": "Yes",
         "MultipleLines": "Yes",
         "InternetService": "Fiber optic",
@@ -59,9 +63,10 @@ def get_drifted_data():
         "Contract": "Month-to-month",
         "PaperlessBilling": "Yes",
         "PaymentMethod": "Electronic check",
-        "MonthlyCharges": random.uniform(150.0, 300.0), # DRIFT: Way too expensive
-        "TotalCharges": random.uniform(8000.0, 10000.0)
+        "MonthlyCharges": random.uniform(150.0, 300.0),  # DRIFT: Way too expensive
+        "TotalCharges": random.uniform(8000.0, 10000.0),
     }
+
 
 def send_request(data):
     try:
@@ -76,6 +81,7 @@ def send_request(data):
         print(f"[CRITICAL] Could not connect to {API_URL}. Is Docker running?")
         sys.exit(1)
 
+
 def main(mode):
     print(f"--- Starting Traffic Simulation: {mode.upper()} MODE ---")
     print(f"Targeting: {API_URL}")
@@ -87,18 +93,20 @@ def main(mode):
                 data = get_normal_data()
             elif mode == "drift":
                 data = get_drifted_data()
-            
+
             # Print a summary instead of the whole JSON to keep terminal clean
-            print(f"Sending Customer: Tenure={data['tenure']}, Charges={data['MonthlyCharges']:.2f}")
+            print(
+                f"Sending Customer: Tenure={data['tenure']}, Charges={data['MonthlyCharges']:.2f}"
+            )
             send_request(data)
             time.sleep(DELAY_SECONDS)
-            
+
     except KeyboardInterrupt:
         print("\nStopping traffic simulation.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["normal", "drift"], default="normal")
     args = parser.parse_args()
     main(args.mode)
-    

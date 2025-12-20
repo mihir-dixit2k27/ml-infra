@@ -47,4 +47,6 @@ notebook
 
 # For loading .env files
 python-dotenv
+  # for checking quality of code
+flake8 
 

@@ -31,9 +31,15 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, ConfusionMatrixDisplay
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    roc_auc_score,
+    ConfusionMatrixDisplay,
+)
 
 import matplotlib
+
 matplotlib.use("Agg")  # for headless environments
 import matplotlib.pyplot as plt
 
@@ -57,9 +63,10 @@ REGISTERED_MODEL_NAME = os.getenv("REGISTERED_MODEL_NAME", "telco-churn-champion
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
 
 # -------------------------
 # Utilities
@@ -67,13 +74,15 @@ logger = logging.getLogger(__name__)
 def set_seed(seed: int = SEED):
     random.seed(seed)
     np.random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     logger.info(f"Random seed set to {seed}")
 
 
 def load_data(train_path: Path = TRAIN_CSV, val_path: Path = VAL_CSV):
     if not train_path.exists() or not val_path.exists():
-        raise FileNotFoundError(f"Train/Val CSVs not found at {train_path} and {val_path}")
+        raise FileNotFoundError(
+            f"Train/Val CSVs not found at {train_path} and {val_path}"
+        )
     train = pd.read_csv(train_path)
     val = pd.read_csv(val_path)
     logger.info(f"Loaded train ({len(train)}) and val ({len(val)})")
@@ -85,34 +94,42 @@ def prepare_target(df: pd.DataFrame, target_col: str = "Churn"):
         raise KeyError(f"Target column '{target_col}' not found in dataframe")
     # convert Yes/No to 1/0 if needed
     if df[target_col].dtype == object:
-        df[target_col] = df[target_col].apply(lambda x: 1 if str(x).strip().lower() == 'yes' else 0)
+        df[target_col] = df[target_col].apply(
+            lambda x: 1 if str(x).strip().lower() == "yes" else 0
+        )
     return df
 
 
 def build_pipeline(X: pd.DataFrame, model_params: dict = None):
-    numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
+    numeric_features = X.select_dtypes(include=["int64", "float64"]).columns.tolist()
+    categorical_features = X.select_dtypes(
+        include=["object", "category"]
+    ).columns.tolist()
     logger.info(f"Numeric features: {numeric_features}")
     logger.info(f"Categorical features: {categorical_features}")
 
     numeric_transformer = Pipeline(steps=[("scaler", StandardScaler())])
-    categorical_transformer = Pipeline(steps=[("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False))])
+    categorical_transformer = Pipeline(
+        steps=[("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False))]
+    )
 
     preprocessor = ColumnTransformer(
         transformers=[
             ("num", numeric_transformer, numeric_features),
-            ("cat", categorical_transformer, categorical_features)
+            ("cat", categorical_transformer, categorical_features),
         ],
-        remainder="drop"
+        remainder="drop",
     )
 
     if model_params is None:
         model_params = {"n_estimators": 100, "max_depth": 10, "random_state": SEED}
 
-    pipeline = Pipeline(steps=[
-        ("preprocessor", preprocessor),
-        ("classifier", RandomForestClassifier(**model_params))
-    ])
+    pipeline = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("classifier", RandomForestClassifier(**model_params)),
+        ]
+    )
     return pipeline, numeric_features, categorical_features
 
 
@@ -232,8 +249,12 @@ def train_and_log_model():
             logger.info(f"Metrics: {metrics}")
 
             # Log params & metrics
-            mlflow.log_params({"n_estimators": model_params.get("n_estimators", None),
-                               "max_depth": model_params.get("max_depth", None)})
+            mlflow.log_params(
+                {
+                    "n_estimators": model_params.get("n_estimators", None),
+                    "max_depth": model_params.get("max_depth", None),
+                }
+            )
             mlflow.log_param("random_seed", SEED)
             mlflow.log_metrics(metrics)
 
@@ -263,6 +284,7 @@ def train_and_log_model():
             # sklearn version
             try:
                 import sklearn
+
                 env_info["scikit_learn_version"] = sklearn.__version__
             except Exception:
                 env_info["scikit_learn_version"] = "unknown"
@@ -288,45 +310,47 @@ def train_and_log_model():
 
             # === START OF NEW MANUAL SAVE CODE ===
             import joblib
+
             # Manually save model to local disk first
             local_model_path = PROJECT_ROOT / "model.pkl"
             print(f"Manually saving model to {local_model_path}...")
             joblib.dump(pipeline, local_model_path)
-            
+
             # Log it as a generic artifact (this bypasses the sklearn flavor issues)
             mlflow.log_artifact(str(local_model_path), artifact_path="model")
-            
+
             # Clean up local file
             os.remove(local_model_path)
             # === END OF NEW MANUAL SAVE CODE ===
             # ... (rest of your existing log_model code) ...
-            logger.info("Logging the model artifact with signature and input example...")
+            logger.info(
+                "Logging the model artifact with signature and input example..."
+            )
 
             # Define the signature and input example
             signature = mlflow.models.infer_signature(X_val, pipeline.predict(X_val))
-            input_example = X_val.iloc[:1] # Take the first row as an example
+            input_example = X_val.iloc[:1]  # Take the first row as an example
 
             # Step 1: Log the model files ONLY (no registration yet)
             # Include signature and input example here
             model_info = mlflow.sklearn.log_model(
                 sk_model=pipeline,  # Use pipeline, not model
-                artifact_path="model", 
-                signature=signature, 
-                input_example=input_example, 
-                registered_model_name=None  # Explicitly disable registration here
+                artifact_path="model",
+                signature=signature,
+                input_example=input_example,
+                registered_model_name=None,  # Explicitly disable registration here
             )
-            
+
             print(f"Model artifact saved to path: {model_info.artifact_path}")
 
             # --- Register the Model Separately ---
             print("Registering the logged model...")
             # Step 2: Register the model using the artifact path from Step 1
             mlflow.register_model(
-                model_uri=model_info.model_uri, # Use the URI of the just-logged artifact
-                name=REGISTERED_MODEL_NAME      # Register it with this name
+                model_uri=model_info.model_uri,  # Use the URI of the just-logged artifact
+                name=REGISTERED_MODEL_NAME,  # Register it with this name
             )
             print("Model artifact logged and registration attempted.")
-
 
             logger.info("Model logged and attempted registration.")
 

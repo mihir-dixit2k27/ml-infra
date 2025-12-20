@@ -134,8 +134,8 @@ services:
   # 3. FastAPI Application
   api:
     build:
-      context: . # Build context is the root 'mlops/' folder
-      dockerfile: api/Dockerfile # Point to the Dockerfile inside 'api/'
+      context: ./api # Build context is the root 'mlops/' folder
+      dockerfile: Dockerfile # Point to the Dockerfile inside 'api/'
     container_name: fast_api
     ports:
       - "8000:8000" # Map host port 8000 to container port 8000
