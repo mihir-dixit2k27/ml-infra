@@ -54,7 +54,48 @@ Once the containers are healthy, the services will be available at:
 * **Airflow Webserver:** `http://localhost:8080` (Default login: admin / admin)
 * **Streamlit Dashboard:** `http://localhost:8501`
 
-To simulate traffic and test the system, you can run the traffic generation script:
+## 🧪 Step-by-Step Testing Guide
+
+Follow these steps to observe each component of the MLOps pipeline working individually and together:
+
+### Step 1: Verify MLflow (Model Registry)
+- Open your browser and navigate to: **http://localhost:5001**
+- **What to check:** Ensure the UI loads. If the model was trained successfully during startup, you should see the `Telco_Churn_Champion` experiment and the registered model.
+
+### Step 2: Verify FastAPI (Model Serving)
+- Run this command in your terminal to check the API health:
+  ```bash
+  curl http://localhost:8000/health
+  ```
+  *(It should return `"status": "healthy"` and confirm the database is connected).*
+- Open your browser to: **http://localhost:8000/docs** to see the Swagger UI.
+
+### Step 3: Simulate Normal Traffic
+Let's send some realistic user data to the API to make sure it's predicting and logging properly.
 ```bash
-python src/send_traffic.py
+python src/send_traffic.py --mode normal
 ```
+- Let this run for about 10-20 seconds to generate logs, then press `CTRL+C` to stop it.
+- **What to check:** The terminal should show successful predictions.
+
+### Step 4: Verify the Streamlit Dashboard
+- Open your browser to: **http://localhost:8501**
+- **What to check:** Go to the **"Live Traffic"** tab. You should see the total number of predictions you just generated, along with the pie chart of the churn distribution. 
+
+### Step 5: Simulate Data Drift (The "Attack")
+Now, let's intentionally send skewed data (e.g., extremely high tenure, impossible charges) to trigger the drift alarm.
+```bash
+python src/send_traffic.py --mode drift
+```
+- Let this run for about 15-30 seconds to skew the database statistics, then press `CTRL+C`.
+- **What to check:** Go back to the Streamlit Dashboard and click the **"Data Drift"** tab. Select `TotalCharges` or `tenure`. You should see a giant red alert saying **"🚨 DRIFT DETECTED!"** because the live traffic no longer matches the baseline training data.
+
+### Step 6: Verify Airflow & Automated Retraining
+Now that drift has occurred, Airflow should catch it and trigger a new training run.
+- Open your browser to: **http://localhost:8080**
+- Log in with username: **`admin`** and password: **`admin`**.
+- Click the **"Play"** button (▶️) on the `drift_check_daily` DAG to trigger it manually.
+- **What to check:** 
+  1. Click into the DAG. You will see it run the drift check script.
+  2. It will query the database, realize drift occurred, and branch into `retrain_model_task`.
+  3. Go back to MLflow (**http://localhost:5001**), and you will see a brand new model version has been logged and registered!
