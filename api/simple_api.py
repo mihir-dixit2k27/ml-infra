@@ -64,11 +64,41 @@ def get_db_connection(retries=5, delay=3):
                 raise  # Re-raise the exception after max retries
 
 
+def create_tables():
+    """Create required DB tables if they don't already exist."""
+    create_sql = """
+    CREATE TABLE IF NOT EXISTS prediction_logs (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMPTZ DEFAULT NOW(),
+        model_version TEXT,
+        prediction INTEGER,
+        gender TEXT, seniorcitizen INTEGER, partner TEXT, dependents TEXT,
+        tenure INTEGER, phoneservice TEXT, multiplelines TEXT, internetservice TEXT,
+        onlinesecurity TEXT, onlinebackup TEXT, deviceprotection TEXT, techsupport TEXT,
+        streamingtv TEXT, streamingmovies TEXT, contract TEXT, paperlessbilling TEXT,
+        paymentmethod TEXT, monthlycharges FLOAT, totalcharges FLOAT
+    );
+    """
+    try:
+        conn = get_db_connection(retries=5, delay=3)
+        cur = conn.cursor()
+        cur.execute(create_sql)
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info("--- prediction_logs table ready ---")
+    except Exception as e:
+        logger.warning(f"Could not create prediction_logs table: {e}")
+
+
 # Load the model at startup with retry logic
 @app.on_event("startup")
 async def load_model():
     """Loads model and fetches version on API startup with retry logic."""
     global CURRENT_MODEL_VERSION
+
+    # Always ensure DB table exists before anything else
+    create_tables()
 
     retries = 5
     delay = 5  # seconds between retries

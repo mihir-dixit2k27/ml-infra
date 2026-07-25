@@ -106,6 +106,7 @@ with DAG(
             "POSTGRES_DB": "mlflow_db",
             "POSTGRES_USER": "mlflow_user",
             "POSTGRES_PASSWORD": "mlflow_password",
+            "MLFLOW_TRACKING_URI": "http://mlflow-ui:5000",
             "PYTHONPATH": "/opt/airflow:/home/airflow/.local/lib/python3.10/site-packages",
         },
     )
