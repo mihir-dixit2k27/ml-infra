@@ -23,3 +23,10 @@ artifacts/
 
 # Data (Optional: usually we don't commit large raw data)
 data/raw/
+
+# Terraform — never commit real tfvars (contains secrets) or local state
+infra/terraform/terraform.tfvars
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/terraform.tfstate
+infra/terraform/terraform.tfstate.backup

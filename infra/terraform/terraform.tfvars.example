@@ -1,0 +1,16 @@
+# ── Copy this file to terraform.tfvars and fill in your values ──────────────
+# NEVER commit terraform.tfvars — it contains secrets (db_password)
+
+aws_region  = "us-east-1"
+environment = "dev"
+project     = "mlops-churn"
+
+# Required — must be set
+db_password = "CHANGE_ME_use_a_strong_password"
+
+# Optional overrides (defaults in variables.tf are fine for dev)
+# db_instance_class        = "db.t3.micro"
+# api_cpu                  = 512
+# api_memory               = 1024
+# alarm_email              = "yourname@example.com"
+# api_latency_threshold_ms = 500

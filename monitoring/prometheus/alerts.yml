@@ -1,0 +1,53 @@
+groups:
+  - name: mlops_churn_alerts
+
+    rules:
+      # ── API SLA Alerts ─────────────────────────────────────────────────────
+
+      # P99 latency > 500ms — fires in 15s vs CloudWatch's 1-min minimum
+      - alert: APIHighLatency
+        expr: histogram_quantile(0.99,
+                rate(http_request_duration_seconds_bucket{job="fastapi-api"}[2m])
+              ) > 0.5
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "API P99 latency above 500ms"
+          description: "P99 latency is {{ $value | humanizeDuration }} (threshold: 500ms)"
+
+      # 5xx error rate > 5% over 2 minutes
+      - alert: APIHighErrorRate
+        expr: |
+          rate(http_requests_total{job="fastapi-api",status=~"5.."}[2m])
+          /
+          rate(http_requests_total{job="fastapi-api"}[2m]) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 5xx error rate > 5%"
+          description: "Error rate: {{ $value | humanizePercentage }}"
+
+      # ── Model Health Alerts ────────────────────────────────────────────────
+
+      # No predictions received in 10 minutes (model may have failed to load)
+      - alert: NoPredictionsReceived
+        expr: rate(http_requests_total{job="fastapi-api",handler="/predict"}[10m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No predictions in the last 10 minutes"
+          description: "The /predict endpoint has received zero traffic. Model may be down."
+
+      # ── Postgres Alerts ────────────────────────────────────────────────────
+
+      - alert: PostgresConnectionsHigh
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Postgres connection count above 80"
+          description: "{{ $value }} active connections"

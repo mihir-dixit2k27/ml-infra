@@ -1,35 +1,161 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
-# Trigger: Run this whenever we push to the main branch
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  PROJECT: mlops-churn
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest  # The robot uses a fresh Linux machine
+  # ── 1. Lint & Test ──────────────────────────────────────────────────────────
+  test:
+    name: Lint & Unit Tests
+    runs-on: ubuntu-latest
 
     steps:
-    # 1. Download your code
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-    # 2. Install Python 3.9
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.9"
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
 
-    # 3. Install your dependencies (including pytest)
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-    # 4. Run the Tests! (This replaces the old Sanity Check)
-    - name: Run Data Integrity Tests
-      run: |
-        pytest tests/
-        
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          flake8 api/ scripts/ dashboard/ --max-line-length=120 --ignore=E501,W503
+
+      - name: Run unit & integration tests
+        run: pytest tests/ -v --tb=short
+
+      - name: Check API health endpoint contract
+        run: |
+          python -c "
+          import ast, sys
+          with open('api/simple_api.py') as f:
+              src = f.read()
+          assert '/health' in src, 'Missing /health endpoint'
+          assert 'prediction_logs' in src, 'Missing prediction_logs table creation'
+          print('Contract checks passed')
+          "
+
+  # ── 2. Terraform Validation ──────────────────────────────────────────────────
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.x
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: infra/terraform
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: infra/terraform
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: infra/terraform
+
+  # ── 3. Build & Push Docker Images ────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+    needs: [test, terraform-validate]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push API image
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          docker build -t $ECR_REGISTRY/$PROJECT-dev-api:$IMAGE_TAG \
+                       -t $ECR_REGISTRY/$PROJECT-dev-api:latest \
+                       -f api/Dockerfile .
+          docker push $ECR_REGISTRY/$PROJECT-dev-api:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$PROJECT-dev-api:latest
+
+      - name: Build & push Dashboard image
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          docker build -t $ECR_REGISTRY/$PROJECT-dev-dashboard:$IMAGE_TAG \
+                       -t $ECR_REGISTRY/$PROJECT-dev-dashboard:latest \
+                       -f dashboard/Dockerfile .
+          docker push $ECR_REGISTRY/$PROJECT-dev-dashboard:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$PROJECT-dev-dashboard:latest
+
+  # ── 4. Deploy to ECS ──────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to ECS Fargate
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new ECS deployment (API)
+        run: |
+          aws ecs update-service \
+            --cluster $PROJECT-dev \
+            --service  $PROJECT-dev-api \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Force new ECS deployment (Dashboard)
+        run: |
+          aws ecs update-service \
+            --cluster $PROJECT-dev \
+            --service  $PROJECT-dev-dashboard \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Wait for API service to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster $PROJECT-dev \
+            --services $PROJECT-dev-api \
+            --region ${{ env.AWS_REGION }}

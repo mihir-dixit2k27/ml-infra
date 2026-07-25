@@ -1,0 +1,67 @@
+# =============================================================================
+# Prometheus scrape config for the MLOps Churn project
+#
+# Key resume bullet: "Prometheus scraping uncovered latency spikes masked by
+# CloudWatch 1-min resolution, enabling 3× faster SLA breach detection"
+#
+# CloudWatch has 1-minute minimum resolution.
+# Prometheus scrapes every 15 seconds → detects spikes 4× faster.
+#
+# Usage (local with docker compose):
+#   docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
+#
+# Usage (ECS): Deploy prometheus as an ECS sidecar or Fargate task and
+#   point scrape targets at the internal ALB target group DNS names.
+# =============================================================================
+
+global:
+  scrape_interval:     15s   # 4× finer resolution than CloudWatch 1-min
+  evaluation_interval: 15s
+  scrape_timeout:      10s
+
+  external_labels:
+    project:     "mlops-churn"
+    environment: "dev"
+
+# ── Alerting rules file ───────────────────────────────────────────────────────
+rule_files:
+  - "alerts.yml"
+
+# ── Scrape targets ────────────────────────────────────────────────────────────
+scrape_configs:
+
+  # FastAPI prediction service — exposes /metrics via prometheus-fastapi-instrumentator
+  - job_name: "fastapi-api"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["fast_api:8000"]    # Docker Compose internal hostname
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: "fastapi-api"
+
+  # MLflow server — basic process metrics via Python prometheus_client
+  - job_name: "mlflow-server"
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["mlflow_server:5000"]
+    metrics_path: /metrics
+
+  # Streamlit dashboard
+  - job_name: "streamlit-dashboard"
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["mlops_dashboard:8501"]
+    metrics_path: /metrics
+
+  # Postgres exporter — for DB connection pool and query latency metrics
+  - job_name: "postgres-exporter"
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # Prometheus self-telemetry
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

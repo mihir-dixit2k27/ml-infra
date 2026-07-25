@@ -1,0 +1,10 @@
+variable "project"                     { type = string }
+variable "environment"                 { type = string }
+variable "alarm_email"                 { type = string }
+variable "api_latency_threshold_ms"    { type = number }
+variable "api_error_rate_threshold"    { type = number }
+variable "alb_arn_suffix"              { type = string }
+variable "api_target_group_arn_suffix" { type = string }
+variable "ecs_cluster_name"            { type = string }
+variable "api_service_name"            { type = string }
+variable "db_instance_id"              { type = string }
